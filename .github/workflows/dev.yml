@@ -1,0 +1,133 @@
+name: 'K8s'
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  terraform:
+    name: 'Terraform'
+    runs-on: ubuntu-latest
+    environment: dev
+
+    # Use the Bash shell regardless whether the GitHub Actions runner is ubuntu-latest, macos-latest, or windows-latest
+    defaults:
+      run:
+        shell: bash
+
+    steps:
+    # Checkout the repository to the GitHub Actions runner
+    - name: Checkout
+      uses: actions/checkout@v4
+
+    # Install the latest version of Terraform CLI
+    - name: Setup Terraform
+      uses: hashicorp/setup-terraform@v1
+      with:
+        terraform_version: 'latest'
+        
+    # Setup AWS credentials
+    - name: Configure AWS Credentials
+      uses: aws-actions/configure-aws-credentials@v4
+      with:
+        aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY }}
+        aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        aws-session-token: ${{ secrets.AWS_SESSION_TOKEN }}
+        aws-region: ${{ secrets.AWS_REGION }}
+    
+    # Sequence of commands to build and push image to ECR repo
+    - name: Docker Connect to ECR
+      if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+      run: aws ecr get-login-password --region ${{ secrets.AWS_REGION }} | docker login --username "AWS" --password-stdin ${{ secrets.ECR_CONN }}
+      
+    # Always build, to make sure build is OK
+    - name: Docker Build
+      if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+      run: docker build -f ./docker/app.Dockerfile  --target dev -t fiap-9soat-challenge-3-main_app:latest . --no-cache
+      
+    - name: Docker Tag
+      if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+      run: docker tag fiap-9soat-challenge-3-main_app:latest ${{ secrets.ECR_CONN }}/${{ secrets.ECR_REPO }}:latest
+      
+    - name: Docker Push
+      if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+      run: docker push ${{ secrets.ECR_CONN }}/${{ secrets.ECR_REPO }}:latest
+    
+    - name: Set up kubectl
+      # if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+      run: |
+        aws eks update-kubeconfig --region ${{ secrets.AWS_REGION }} --name ${{ secrets.EKS_CLUSTER_NAME }}
+        
+    - name: Get RDS HOST
+      run: |
+        RDS_HOST=$(aws rds describe-db-instances --query "DBInstances[?DBInstanceIdentifier=='${{ secrets.RDS_IDENTIFIER }}'].Endpoint.Address" --output text)
+        echo "RDS_HOST=$RDS_HOST" >> $GITHUB_ENV
+      
+        
+    - name: Update ConfigMap with RDS Host
+      run: |
+        sed -i "s|RDS_HOST: .*|RDS_HOST: $RDS_HOST|" configmap.yaml
+      working-directory: ./k8s
+    
+    - name: Apply Kubernetes Secret
+      run: |
+        DB_PASS_B64=$(echo -n "${{ secrets.DB_PASSWORD }}" | base64)
+        cat <<EOF | kubectl apply -f -
+        apiVersion: v1
+        kind: Secret
+        metadata:
+          name: db-secrets
+        type: Opaque
+        data:
+          DB_PASSWORD: $DB_PASS_B64
+        EOF
+      
+    - name: Apply Kubernetes Deployments
+      if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+      run: |
+        kubectl apply -f configmap.yaml
+        kubectl apply -f app-deployment.yaml
+        kubectl apply -f app-service.yaml
+        kubectl apply -f hpa.yaml
+        kubectl rollout restart deployment app
+      working-directory: ./k8s
+      
+    - name: Get kubernetes load balancer
+      # if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+      run: |
+            lb_dns=$(kubectl get services \
+               --namespace default \
+               app-internal \
+               --output jsonpath='{.status.loadBalancer.ingress[0].hostname}')
+                lb_name=$(echo $string | cut -d '-' -f 1)
+                lb_arn=$(aws elbv2 describe-load-balancers --names $lb_name --query "LoadBalancers[].LoadBalancerArn" --output text)
+                LOAD_BALANCER_LISTENER=$(aws elbv2 describe-listeners --load-balancer-arn $lb_arn --query "Listeners[].ListenerArn" --output text)
+             echo "LOAD_BALANCER_LISTENER=$LOAD_BALANCER_LISTENER" >> $GITHUB_ENV
+             
+    # Initialize a new or existing Terraform working directory by creating initial files, loading any remote state, downloading modules, etc.
+    - name: Terraform Init
+      # if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+      run: terraform init -backend-config="bucket=${{ secrets.TFSTATE_BUCKET }}"
+      working-directory: ./infra
+     
+    # Checks that all Terraform configuration files adhere to a canonical format
+    - name: Terraform Format
+      # if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+      run: terraform fmt -check
+      working-directory: ./infra
+
+    # Generates an execution plan for Terraform
+    - name: Terraform Plan
+      # if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+      run: terraform plan -input=false -var="load_balancer_dns=$LOAD_BALANCER_LISTENER"
+      working-directory: ./infra
+
+      # On push to "development", build or change infrastructure according to Terraform configuration files
+    - name: Terraform Apply
+      # if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+      run: terraform apply -auto-approve -input=false -var="load_balancer_dns=$LOAD_BALANCER_LISTENER"
+      working-directory: ./infra
