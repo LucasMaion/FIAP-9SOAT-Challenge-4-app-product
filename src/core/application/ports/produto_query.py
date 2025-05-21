@@ -1,4 +1,5 @@
 from abc import ABC, abstractmethod
+from typing import List
 
 from src.core.domain.aggregates.produto_aggregate import ProdutoAggregate
 from src.core.domain.entities.produto_entity import ProdutoEntity
@@ -15,9 +16,17 @@ class ProdutoQuery(ABC):
         raise NotImplementedError()
 
     @abstractmethod
-    def get_all(self) -> list[ProdutoAggregate]:
+    def get_all(self) -> List[ProdutoAggregate]:
         raise NotImplementedError()
 
     @abstractmethod
-    def find(self, query_options: ProdutoFindOptions) -> list[ProdutoAggregate]:
+    def find(self, query_options: ProdutoFindOptions) -> List[ProdutoAggregate]:
+        raise NotImplementedError()
+
+    @abstractmethod
+    def get_all_ids(self, items: List[int]) -> List[ProdutoAggregate]:
+        raise NotImplementedError()
+
+    @abstractmethod
+    def get_by_purchase_id(self, purchase_id: int) -> List[ProdutoAggregate]:
         raise NotImplementedError()

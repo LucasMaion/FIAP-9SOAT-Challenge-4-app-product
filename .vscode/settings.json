@@ -1,4 +1,4 @@
- {
+{
     "cSpell.language": "en,pt-BR",
     "[python]": {
         "editor.formatOnType": true,
@@ -9,6 +9,8 @@
     "editor.formatOnSave": true,
     "cSpell.words": [
         "Pagamentoentity",
+        "postgres",
+        "postgresql",
         "preco"
     ],
     "python.testing.pytestArgs": [

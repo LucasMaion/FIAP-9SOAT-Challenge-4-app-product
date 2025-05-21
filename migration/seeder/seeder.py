@@ -1,20 +1,12 @@
 from decimal import Decimal
-import os
-import re
-import sys
-import random
 from typing import List, Tuple
 from faker import Faker
 
 
-from src.adapters.driven.infra.models.address import Address
 from src.adapters.driven.infra.models.categories import Category
 from src.adapters.driven.infra.models.currencies import Currency
-from src.adapters.driven.infra.models.payment_methods import PaymentMethod
-from src.adapters.driven.infra.models.persona import Persona
 from src.adapters.driven.infra.models.product_components import ProductComponent
 from src.adapters.driven.infra.models.products import Product
-from src.adapters.driven.infra.models.purchases import Purchase
 from src.adapters.driven.infra.models.purchase_selected_products import (
     PurchaseSelectedProducts,
 )
@@ -22,57 +14,8 @@ from src.adapters.driven.infra.models.select_product import SelectedProduct
 from src.adapters.driven.infra.models.select_product_components import (
     SelectedProductComponent,
 )
-from src.adapters.driven.infra.models.payments import Payment
-from src.adapters.driven.infra.models.user import User
 
 fake = Faker("pt_BR")
-
-
-def _seed_address(amount: int) -> List[int]:
-    ids = []
-    for _ in range(amount):
-        address: Address = Address(
-            zip_code=fake.postcode(),
-            street=fake.street_name(),
-            number=fake.random_number(3),
-            city=fake.city(),
-            state=fake.state(),
-            country=fake.country(),
-            additional_information=fake.random_letters(15),
-        )
-
-        address.save()
-        ids.append(address.id)
-    return ids
-
-
-def _seed_persona(amount: int, address_ids: List[int]) -> List[int]:
-    ids = []
-    for index in range(amount):
-        persona = Persona(
-            name=fake.name(),
-            document=re.sub(r"\D", "", fake.cpf()),
-            email=fake.email(),
-            phone=re.sub(r"\D", "", fake.phone_number()),
-            birth_date=fake.date_of_birth(),
-            address=address_ids[index],
-        )
-        persona.save()
-        ids.append(persona.id)
-    return ids
-
-
-def _seed_user(amount: int, person_ids: List[int]) -> List[int]:
-    ids = []
-    for index in range(amount):
-        if index >= len(person_ids):
-            break
-        user = User(
-            username=fake.email(), password=fake.password(), person=person_ids[index]
-        )
-        user.save()
-        ids.append(user.id)
-    return ids
 
 
 def _seed_category() -> List[int]:
@@ -112,19 +55,6 @@ def _seed_currency() -> int:
     )
     currency.save()
     return currency.id
-
-
-def _seed_payment_methods() -> int:
-    payment_method = PaymentMethod(
-        name="Mercado Pago QR Code",
-        sys_name="DefaultPaymentProvider",
-        internal_comm_method_name="PaymentEvent.internal_finalize_payment",
-        internal_comm_delay=5,
-        description="Pagamento para processar pelo mercado pago, cliente escaneia o QR Code para realizar transação.",
-        is_active=True,
-    )
-    payment_method.save()
-    return payment_method.id
 
 
 def _seed_product_and_product_components(
@@ -213,6 +143,7 @@ def _seed_product_and_product_components(
         is_active=True,
         currency=1,
     )
+    hambuguer.save()
     chicken = Product(
         name="chicken",
         price=Decimal(5),
@@ -221,7 +152,6 @@ def _seed_product_and_product_components(
         currency=1,
     )
     chicken.save()
-    hambuguer.save()
     queijo = Product(
         name="queijo",
         price=Decimal(2),
@@ -283,8 +213,6 @@ def _seed_product_and_product_components(
 def _seed_purchases_selected_products_selected_products_components_and_payments(
     product_ids: List[int],
     components: List[List[int]],
-    personas: List[int],
-    payment_method: int,
     currency: int,
 ):
     # 1st purchase
@@ -300,25 +228,14 @@ def _seed_purchases_selected_products_selected_products_components_and_payments(
     )
     component.save()
     total_value = sum([product.product.price for product in first_products])
-    first_purchase = Purchase(
-        status=1, total_value=total_value, currency=1, client=personas[0]
-    )
-    first_purchase.save()
+    first_purchase = 1
     purchase_selected_products = []
     for product in first_products:
         product.save()
         purchase_selected_products.append(
-            PurchaseSelectedProducts(product=product.id, purchase=first_purchase.id)
+            PurchaseSelectedProducts(product=product.id, purchase_id=first_purchase)
         )
         purchase_selected_products[-1].save()
-    first_payment = Payment(
-        payment_method=payment_method,
-        currency=currency,
-        value=total_value,
-        status=4,
-        purchase=first_purchase.id,
-    )
-    first_payment.save()
 
     # 2nd purchase
     second_products = [
@@ -329,25 +246,14 @@ def _seed_purchases_selected_products_selected_products_components_and_payments(
     for product in second_products:
         product.save()
     total_value = sum([product.product.price for product in second_products])
-    second_purchase = Purchase(
-        status=6, total_value=total_value, currency=1, client=personas[0]
-    )
-    second_purchase.save()
+    second_purchase = 2
     purchase_selected_products = []
     for product in second_products:
         product.save()
         purchase_selected_products.append(
-            PurchaseSelectedProducts(product=product.id, purchase=second_purchase.id)
+            PurchaseSelectedProducts(product=product.id, purchase_id=second_purchase)
         )
         purchase_selected_products[-1].save()
-    second_payment = Payment(
-        payment_method=payment_method,
-        currency=currency,
-        value=total_value,
-        status=2,
-        purchase=second_purchase.id,
-    )
-    second_payment.save()
     # 3th purchase
     third_products = [
         SelectedProduct(product=product_ids[1]),
@@ -357,42 +263,27 @@ def _seed_purchases_selected_products_selected_products_components_and_payments(
     for product in third_products:
         product.save()
     total_value = sum([product.product.price for product in third_products])
-    third_purchase = Purchase(
-        status=7, total_value=total_value, currency=1, client=personas[0]
-    )
-    third_purchase.save()
+    third_purchase = 3
     purchase_selected_products = []
     for product in third_products:
         product.save()
         purchase_selected_products.append(
-            PurchaseSelectedProducts(product=product.id, purchase=third_purchase.id)
+            PurchaseSelectedProducts(product=product.id, purchase_id=third_purchase)
         )
         purchase_selected_products[-1].save()
-    third_payment = Payment(
-        payment_method=payment_method,
-        currency=currency,
-        value=total_value,
-        status=3,
-        purchase=third_purchase.id,
-    )
-    third_payment.save()
     return [
-        first_purchase.id,
-        second_purchase.id,
-        third_purchase.id,
+        first_purchase,
+        second_purchase,
+        third_purchase,
     ]
 
 
 def seed_data():
-    addresses = _seed_address(5)
-    personas = _seed_persona(5, addresses)
-    _seed_user(3, personas)
     bebidas, lanches, acompanhamentos, adicionais = _seed_category()
     currency = _seed_currency()
-    payment_method = _seed_payment_methods()
     product_ids, components = _seed_product_and_product_components(
         bebidas, lanches, acompanhamentos, adicionais
     )
     _seed_purchases_selected_products_selected_products_components_and_payments(
-        product_ids, components, personas, payment_method, currency
+        product_ids, components, currency
     )

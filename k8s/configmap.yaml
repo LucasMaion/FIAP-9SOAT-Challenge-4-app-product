@@ -1,7 +1,7 @@
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: app-config
+  name: app-product-config
 data:
   DB_NAME: "FiapSoat9"
   DB_USER: "fiap"

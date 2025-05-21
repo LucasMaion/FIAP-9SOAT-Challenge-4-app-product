@@ -16,13 +16,8 @@ from fastapi.security import HTTPBearer
 from builder import build_db, seed_db
 from src.adapters.driven.infra.database.db import start_db
 from src.adapters.driver.API import (
-    cliente_router,
-    payment_router,
-    pedido_router,
     produto_router,
-    queue_router,
     maintenance_router,
-    web_hook_example_router,
 )
 
 auth_scheme = HTTPBearer()
@@ -72,7 +67,7 @@ async def openapijson():
     return app.openapi()
 
 
-@app.get(f"/{STAGE_PREFIX}/health_check", dependencies=[Depends(get_token)])
+@app.get(f"/{STAGE_PREFIX}/health_check")
 def health_check():
     """
     Request this to check on the server health.
@@ -80,28 +75,9 @@ def health_check():
     return "Healthy"
 
 
-app.include_router(
-    cliente_router.router, prefix=f"/{STAGE_PREFIX}", dependencies=[Depends(get_token)]
-)
-app.include_router(
-    produto_router.router, prefix=f"/{STAGE_PREFIX}", dependencies=[Depends(get_token)]
-)
-app.include_router(
-    pedido_router.router, prefix=f"/{STAGE_PREFIX}", dependencies=[Depends(get_token)]
-)
-app.include_router(
-    payment_router.router, prefix=f"/{STAGE_PREFIX}", dependencies=[Depends(get_token)]
-)
-app.include_router(
-    queue_router.router, prefix=f"/{STAGE_PREFIX}", dependencies=[Depends(get_token)]
-)
+app.include_router(produto_router.router, prefix=f"/{STAGE_PREFIX}")
 app.include_router(
     maintenance_router.router,
-    prefix=f"/{STAGE_PREFIX}",
-    dependencies=[Depends(get_token)],
-)
-app.include_router(
-    web_hook_example_router.router,
     prefix=f"/{STAGE_PREFIX}",
     dependencies=[Depends(get_token)],
 )
