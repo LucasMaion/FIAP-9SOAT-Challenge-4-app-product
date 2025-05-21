@@ -8,6 +8,13 @@ from src.adapters.driven.infra.models.categories import Category
 from src.adapters.driven.infra.models.currencies import Currency
 from src.adapters.driven.infra.models.product_components import ProductComponent
 from src.adapters.driven.infra.models.products import Product
+from src.adapters.driven.infra.models.purchase_selected_products import (
+    PurchaseSelectedProducts,
+)
+from src.adapters.driven.infra.models.select_product import SelectedProduct
+from src.adapters.driven.infra.models.select_product_components import (
+    SelectedProductComponent,
+)
 from src.core.application.ports.produto_query import ProdutoQuery
 from src.core.domain.aggregates.produto_aggregate import ProdutoAggregate
 from src.core.domain.entities.produto_entity import ProdutoEntity
@@ -120,6 +127,68 @@ class OrmProductQuery(ProdutoQuery):
                 join_type=JOIN.LEFT_OUTER,
             )
             .where(*queries)
+        )
+        parsed_result = [
+            ProdutoAggregateDataMapper.from_db_to_domain(res) for res in result
+        ]
+        return parsed_result
+
+    def get_all_ids(self, items: List[int]) -> List[ProdutoAggregate]:
+        result = (
+            Product.select()
+            .join(
+                Currency,
+                join_type=JOIN.LEFT_OUTER,
+            )
+            .switch(Product)
+            .join(
+                Category,
+                join_type=JOIN.LEFT_OUTER,
+            )
+            .where(Product.id.in_(items))
+        )
+        parsed_result = [
+            ProdutoAggregateDataMapper.from_db_to_domain(res) for res in result
+        ]
+        return parsed_result
+
+    def get_by_purchase_id(self, purchase_id: int) -> List[ProdutoAggregate]:
+        result = (
+            Product.select()
+            .join(
+                Currency,
+                join_type=JOIN.LEFT_OUTER,
+            )
+            .switch(Product)
+            .join(
+                Category,
+                join_type=JOIN.LEFT_OUTER,
+            )
+            .switch(Product)
+            .join(
+                ProductComponent,
+                on=(ProductComponent.product == Product.id),
+                join_type=JOIN.LEFT_OUTER,
+            )
+            .switch(Product)
+            .join(
+                SelectedProduct,
+                on=(SelectedProduct.id == Product.id),
+                join_type=JOIN.LEFT_OUTER,
+            )
+            .join(
+                PurchaseSelectedProducts,
+                on=(PurchaseSelectedProducts.product == SelectedProduct.id),
+                join_type=JOIN.LEFT_OUTER,
+            )
+            .switch(PurchaseSelectedProducts)
+            .join(
+                SelectedProductComponent,
+                on=(SelectedProductComponent.selected_product == SelectedProduct.id),
+                join_type=JOIN.LEFT_OUTER,
+            )
+            .where(PurchaseSelectedProducts.purchase_id == purchase_id)
+            .distinct()
         )
         parsed_result = [
             ProdutoAggregateDataMapper.from_db_to_domain(res) for res in result

@@ -1,4 +1,5 @@
 from abc import ABC, abstractmethod
+from typing import List
 
 from src.core.application.ports.categoria_query import CategoriaQuery
 from src.core.application.ports.currency_query import CurrencyQuery
@@ -6,6 +7,7 @@ from src.core.application.ports.produto_query import ProdutoQuery
 from src.core.domain.aggregates.produto_aggregate import ProdutoAggregate
 from src.core.domain.entities.produto_entity import PartialProdutoEntity, ProdutoEntity
 from src.core.domain.repositories.produto_repository import ProdutoRepository
+from src.core.helpers.options.add_purchase_options import AddPurchaseOptions
 
 
 class IProductCommand(ABC):
@@ -40,4 +42,14 @@ class IProductCommand(ABC):
 
     @abstractmethod
     def update_product(self, produto: ProdutoEntity) -> ProdutoAggregate:
+        raise NotImplementedError()
+
+    @abstractmethod
+    def get_all_by_purchase(self, purchase_id: int) -> List[ProdutoAggregate]:
+        raise NotImplementedError()
+
+    @abstractmethod
+    def add_purchase(
+        self, purchase_id: int, products: List[AddPurchaseOptions]
+    ) -> List[ProdutoAggregate]:
         raise NotImplementedError()

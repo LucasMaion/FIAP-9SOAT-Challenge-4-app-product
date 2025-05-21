@@ -1,5 +1,5 @@
 from abc import ABC, abstractmethod
-from typing import Any
+from typing import Any, List, Optional
 
 from src.core.domain.aggregates.produto_aggregate import ProdutoAggregate
 from src.core.domain.base.repository import Repository
@@ -18,7 +18,7 @@ class ProdutoRepository(Repository, ABC):
         raise NotImplementedError()
 
     @abstractmethod
-    def delete(self, produto_id: int):
+    def delete(self, produto_id: int) -> None:
         raise NotImplementedError()
 
     @abstractmethod
@@ -26,5 +26,14 @@ class ProdutoRepository(Repository, ABC):
         raise NotImplementedError()
 
     @abstractmethod
-    def find(self, query_options: ProdutoFindOptions) -> list[ProdutoAggregate]:
+    def find(self, query_options: ProdutoFindOptions) -> List[ProdutoAggregate]:
+        raise NotImplementedError()
+
+    @abstractmethod
+    def set_selected_product_and_components(
+        self,
+        produto_id: int,
+        purchase_id: int,
+        component_ids: Optional[List[int]] = None,
+    ) -> ProdutoAggregate:
         raise NotImplementedError()

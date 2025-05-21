@@ -7,6 +7,7 @@ from src.adapters.driven.infra.ports.orm_produto_query import OrmProductQuery
 from src.adapters.driven.infra.repositories.orm_produto_repository import (
     OrmProdutoRepository,
 )
+from src.adapters.driver.API.schemas.add_purchase_schema import AddPurchaseSchema
 from src.adapters.driver.API.schemas.create_product_schema import CreateProductSchema
 from src.adapters.driver.API.schemas.update_product_schema import UpdateProductSchema
 from src.core.application.services.produto_service_command import ProductServiceCommand
@@ -21,7 +22,7 @@ from src.core.domain.entities.categoria_entity import (
 from src.core.domain.entities.currency_entity import (
     PartialCurrencyEntity,
 )
-from src.core.domain.entities.produto_entity import PartialProdutoEntity
+from src.core.domain.entities.produto_entity import PartialProdutoEntity, ProdutoEntity
 from src.core.domain.value_objects.preco_value_object import PrecoValueObject
 from src.core.helpers.functions.structure_value_range import structure_value_range
 from src.core.helpers.options.produto_find_options import ProdutoFindOptions
@@ -187,3 +188,36 @@ async def deactivate_item(item_id: int) -> ProdutoAggregate:
         OrmCurrencyQuery(),
     )
     return command.deactivate_product(item_id)
+
+
+@router.patch("/purchase/{purchase_id}", include_in_schema=False)
+async def get_all_by_purchase(purchase_id: int) -> ProdutoAggregate:
+    command = ProductServiceCommand(
+        OrmProdutoRepository(),
+        OrmProductQuery(),
+        OrmCategoriaQuery(),
+        OrmCurrencyQuery(),
+    )
+    return command.get_all_by_purchase(purchase_id)
+
+
+@router.patch("/add_purchase/", include_in_schema=False)
+async def add_purchase(options: AddPurchaseSchema) -> ProdutoAggregate:
+    command = ProductServiceCommand(
+        OrmProdutoRepository(),
+        OrmProductQuery(),
+        OrmCategoriaQuery(),
+        OrmCurrencyQuery(),
+    )
+    return command.add_purchase(options.purchase_id, options.products)
+
+
+@router.get("/get_entity/{produto_id}", include_in_schema=False)
+async def get_entity(produto_id: int) -> ProdutoEntity:
+    command = ProductServiceCommand(
+        OrmProdutoRepository(),
+        OrmProductQuery(),
+        OrmCategoriaQuery(),
+        OrmCurrencyQuery(),
+    )
+    return command.get_entity(produto_id)

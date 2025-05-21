@@ -1,19 +1,19 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: postgres
+  name: product-postgres
 spec:
   replicas: 1
   selector:
     matchLabels:
-      app: postgres
+      app: product-postgres
   template:
     metadata:
       labels:
-        app: postgres
+        app: product-postgres
     spec:
       containers:
-        - name: postgres
+        - name: product-postgres
           image: postgres:17
           ports:
             - containerPort: 5432
@@ -21,11 +21,11 @@ spec:
             - name: POSTGRES_PASSWORD
               valueFrom:
                 secretKeyRef:
-                  name: db-secrets
+                  name: db-product-secrets
                   key: DB_PASSWORD
           volumeMounts:
             - mountPath: /var/lib/postgresql/data
-              name: postgres-data
+              name: product-postgres-data
           resources:
             requests:
               memory: "512Mi"
@@ -34,5 +34,5 @@ spec:
               memory: "1Gi"
               cpu: "1"
       volumes:
-        - name: postgres-data
+        - name: product-postgres-data
           emptyDir: {} # Ephemeral volume -- TODO: Use a PersistentVolumeClaim for a persistent volume in production, this build IS NOT READY FOR PRODUCTION

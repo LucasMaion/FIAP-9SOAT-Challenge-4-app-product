@@ -1,12 +1,10 @@
 from copy import deepcopy
 from datetime import datetime
-from decimal import Decimal
+from typing import List, Optional
 from unittest.mock import MagicMock
 import pytest
 
 from src.core.domain.aggregates.produto_aggregate import ProdutoAggregate
-from src.core.domain.entities.cliente_entity import PartialClienteEntity
-from src.core.domain.entities.compra_entity import CompraEntity
 from src.core.domain.entities.produto_entity import PartialProdutoEntity, ProdutoEntity
 from src.core.domain.entities.categoria_entity import CategoriaEntity
 from src.core.domain.entities.currency_entity import CurrencyEntity
@@ -16,7 +14,9 @@ from src.core.domain.entities.produto_escolhido_entity import (
 from src.core.domain.value_objects.preco_value_object import PrecoValueObject
 
 from src.core.application.services.produto_service_command import ProductServiceCommand
-from src.core.helpers.enums.compra_status import CompraStatus
+from src.core.helpers.exceptions.incorrect_product_error import IncorrectProductError
+from src.core.helpers.exceptions.item_not_found_error import ItemNotFoundError
+from src.core.helpers.options.add_purchase_options import AddPurchaseOptions
 
 
 class TestProductServiceCommand:
@@ -386,27 +386,7 @@ class TestProductServiceCommand:
                 updated_at=datetime(2021, 1, 1),
                 components=[PartialProdutoEntity(id=2), PartialProdutoEntity(id=3)],
             ),
-            orders=[
-                CompraEntity(
-                    id=1,
-                    client=PartialClienteEntity(id=1),
-                    status=CompraStatus.CRIANDO,
-                    selected_products=[PartialProdutoEscolhidoEntity(id=1)],
-                    created_at=datetime(2021, 1, 1),
-                    updated_at=datetime(2021, 1, 1),
-                    total=PrecoValueObject(
-                        value=Decimal(10),
-                        currency=CurrencyEntity(
-                            symbol="R$",
-                            name="Real",
-                            code="BRL",
-                            id=1,
-                            created_at=datetime(2021, 1, 1),
-                            updated_at=datetime(2021, 1, 1),
-                        ),
-                    ),
-                )
-            ],
+            orders=[1],
         )
         product_service.product_repository.get_by_product_id = MagicMock(
             return_value=product
@@ -909,3 +889,362 @@ class TestProductServiceCommand:
 
         # assert
         product_service.product_repository.update.assert_called()
+
+    def test_get_all_by_purchase_has_products(
+        self, product_service: ProductServiceCommand, produto_entity: ProdutoEntity
+    ):
+        # arrange
+        product = deepcopy(produto_entity)
+        product.id = 1
+        product_service.product_query.get_by_purchase_id = MagicMock(
+            return_value=[ProdutoAggregate(product=product)]
+        )
+
+        # act
+        result = product_service.get_all_by_purchase(1)
+
+        # assert
+        assert len(result) == 1
+        assert result[0].product.id == 1
+
+    def test_get_all_by_purchase_does_not_has_products(
+        self, product_service: ProductServiceCommand
+    ):
+        # arrange
+        product_service.product_query.get_by_purchase_id = MagicMock(return_value=[])
+
+        # act
+        result = product_service.get_all_by_purchase(1)
+
+        # assert
+        assert len(result) == 0
+
+    def test_add_purchase_fail_because_product_not_found(
+        self, product_service: ProductServiceCommand
+    ):
+        # arrange
+        product_service.product_query.get_all_ids = MagicMock(return_value=[])
+        product_service.product_repository.update = MagicMock(return_value=None)
+        options = [AddPurchaseOptions(product_id=1), AddPurchaseOptions(product_id=2)]
+        # act
+        with pytest.raises(
+            ItemNotFoundError,
+            match="Um ou mais produtos não encontrados, missing IDs: 1, 2",
+        ):
+            product_service.add_purchase(1, options)
+
+        # assert
+        product_service.product_query.get_all_ids.assert_called_once()
+        product_service.product_repository.update.assert_not_called()
+
+    def test_add_purchase_fail_because_component_does_not_exists(
+        self, product_service: ProductServiceCommand, produto_entity: ProdutoEntity
+    ):
+        # arrange
+        product_service.product_query.get_all_ids = MagicMock(
+            return_value=[ProdutoAggregate(product=produto_entity)]
+        )
+        product_service.product_repository.update = MagicMock(return_value=None)
+        options = [AddPurchaseOptions(product_id=1, components=[2, 3])]
+        # act
+        with pytest.raises(
+            ItemNotFoundError,
+            match="Um ou mais produtos não encontrados, missing IDs: 2, 3",
+        ):
+            product_service.add_purchase(1, options)
+
+        # assert
+        product_service.product_query.get_all_ids.assert_called_once()
+        product_service.product_repository.update.assert_not_called()
+
+    def test_add_purchase_fail_because_product_does_not_allow_components(
+        self, product_service: ProductServiceCommand, produto_entity: ProdutoEntity
+    ):
+        # arrange
+        main_product = deepcopy(produto_entity)
+        main_product.allow_components = False
+        component_product = deepcopy(produto_entity)
+        component_product.id = 2
+
+        product_service.product_query.get_all_ids = MagicMock(
+            return_value=[
+                ProdutoAggregate(product=main_product),
+                ProdutoAggregate(product=component_product),
+            ]
+        )
+        product_service.product_repository.update = MagicMock(return_value=None)
+        options = [AddPurchaseOptions(product_id=1, components=[2])]
+        # act
+        with pytest.raises(
+            IncorrectProductError,
+            match="Acompanhamento selecionado, mas produto não permite acompanhamentos",
+        ):
+            product_service.add_purchase(1, options)
+
+        # assert
+        product_service.product_query.get_all_ids.assert_called_once()
+        product_service.product_repository.update.assert_not_called()
+
+    def test_add_purchase_fail_because_product_does_not_have_components(
+        self, product_service: ProductServiceCommand, produto_entity: ProdutoEntity
+    ):
+        # arrange
+        main_product = deepcopy(produto_entity)
+        main_product.allow_components = True
+        main_product.components = []
+        component_product = deepcopy(produto_entity)
+        component_product.id = 2
+
+        product_service.product_query.get_all_ids = MagicMock(
+            return_value=[
+                ProdutoAggregate(product=main_product),
+                ProdutoAggregate(product=component_product),
+            ]
+        )
+        product_service.product_repository.update = MagicMock(return_value=None)
+        options = [AddPurchaseOptions(product_id=1, components=[2])]
+        # act
+        with pytest.raises(
+            IncorrectProductError,
+            match="Acompanhamento selecionado, mas produto não possui acompanhamentos",
+        ):
+            product_service.add_purchase(1, options)
+
+        # assert
+        product_service.product_query.get_all_ids.assert_called_once()
+        product_service.product_repository.update.assert_not_called()
+
+    def test_add_purchase_fail_because_product_does_not_have_specified_component(
+        self, product_service: ProductServiceCommand, produto_entity: ProdutoEntity
+    ):
+        # arrange
+        main_product = deepcopy(produto_entity)
+        main_product.allow_components = True
+        main_product.components = [PartialProdutoEntity(id=3)]
+        component_product = deepcopy(produto_entity)
+        component_product.id = 2
+
+        product_service.product_query.get_all_ids = MagicMock(
+            return_value=[
+                ProdutoAggregate(product=main_product),
+                ProdutoAggregate(product=component_product),
+            ]
+        )
+        product_service.product_repository.update = MagicMock(return_value=None)
+        options = [AddPurchaseOptions(product_id=1, components=[2])]
+        # act
+        with pytest.raises(
+            IncorrectProductError,
+            match="Acompanhamento não encontrado ou não permitido para este produto",
+        ):
+            product_service.add_purchase(1, options)
+
+        # assert
+        product_service.product_query.get_all_ids.assert_called_once()
+        product_service.product_repository.update.assert_not_called()
+
+    def test_add_purchase_success_clean_purchase(
+        self, product_service: ProductServiceCommand, produto_entity: ProdutoEntity
+    ):
+        # arrange
+        main_product = deepcopy(produto_entity)
+        main_product.allow_components = True
+        main_product.components = [PartialProdutoEntity(id=2)]
+        component_product = deepcopy(produto_entity)
+        component_product.id = 2
+        set_product = ProdutoAggregate(product=main_product, orders=[1])
+
+        product_service.product_query.get_all_ids = MagicMock(
+            return_value=[
+                ProdutoAggregate(product=main_product),
+                ProdutoAggregate(product=component_product),
+            ]
+        )
+        product_service.product_query.get_by_purchase_id = MagicMock(return_value=None)
+        product_service.product_repository.delete = MagicMock(return_value=None)
+        product_service.product_repository.set_selected_product_and_components = (
+            MagicMock(return_value=set_product)
+        )
+
+        options = [AddPurchaseOptions(product_id=1, components=[2])]
+        # act
+
+        result = product_service.add_purchase(1, options)
+
+        # assert
+        assert len(result) == 1
+        assert result[0] == set_product
+
+        product_service.product_query.get_all_ids.assert_called_once()
+        product_service.product_repository.delete.assert_not_called()
+        product_service.product_repository.set_selected_product_and_components.assert_called_once()
+
+    def test_add_purchase_success_change_component_from_product(
+        self, product_service: ProductServiceCommand, produto_entity: ProdutoEntity
+    ):
+        # arrange
+        main_product = deepcopy(produto_entity)
+        main_product.allow_components = True
+        main_product.components = [
+            PartialProdutoEntity(id=2),
+            PartialProdutoEntity(id=3),
+        ]
+        component_product = deepcopy(produto_entity)
+        component_product.id = 2
+        set_product = ProdutoAggregate(product=main_product, orders=[1])
+
+        product_service.product_query.get_all_ids = MagicMock(
+            return_value=[
+                ProdutoAggregate(product=main_product),
+                ProdutoAggregate(product=component_product),
+            ]
+        )
+        product_service.product_query.get_by_purchase_id = MagicMock(
+            return_value=[ProdutoAggregate(product=main_product)]
+        )
+        product_service.product_repository.delete = MagicMock(return_value=None)
+        product_service.product_repository.set_selected_product_and_components = (
+            MagicMock(return_value=set_product)
+        )
+
+        options = [AddPurchaseOptions(product_id=1, components=[2])]
+        # act
+
+        result = product_service.add_purchase(1, options)
+
+        # assert
+        assert len(result) == 1
+        assert result[0] == set_product
+
+        product_service.product_query.get_all_ids.assert_called_once()
+        product_service.product_repository.delete.assert_called_once()
+        product_service.product_repository.set_selected_product_and_components.assert_called_once()
+
+    def test_add_purchase_success_add_component_to_product(
+        self, product_service: ProductServiceCommand, produto_entity: ProdutoEntity
+    ):
+        # arrange
+        main_product = deepcopy(produto_entity)
+        main_product.allow_components = True
+        main_product.components = [
+            PartialProdutoEntity(id=2),
+            PartialProdutoEntity(id=3),
+        ]
+        component_product = deepcopy(produto_entity)
+        component_product.id = 2
+        second_component_product = deepcopy(produto_entity)
+        second_component_product.id = 3
+        set_product = ProdutoAggregate(product=main_product, orders=[1])
+
+        product_service.product_query.get_all_ids = MagicMock(
+            return_value=[
+                ProdutoAggregate(product=main_product),
+                ProdutoAggregate(product=component_product),
+                ProdutoAggregate(product=second_component_product),
+            ]
+        )
+        product_service.product_query.get_by_purchase_id = MagicMock(
+            return_value=[ProdutoAggregate(product=main_product)]
+        )
+        product_service.product_repository.delete = MagicMock(return_value=None)
+        product_service.product_repository.set_selected_product_and_components = (
+            MagicMock(return_value=set_product)
+        )
+
+        options = [AddPurchaseOptions(product_id=1, components=[2, 3])]
+        # act
+
+        result = product_service.add_purchase(1, options)
+
+        # assert
+        assert len(result) == 1
+        assert result[0] == set_product
+
+        product_service.product_query.get_all_ids.assert_called_once()
+        product_service.product_repository.delete.assert_called_once()
+        product_service.product_repository.set_selected_product_and_components.assert_called_once()
+
+    def test_add_purchase_success_remove_component_from_product(
+        self, product_service: ProductServiceCommand, produto_entity: ProdutoEntity
+    ):
+        # arrange
+        main_product = deepcopy(produto_entity)
+        main_product.allow_components = True
+        main_product.components = [
+            PartialProdutoEntity(id=2),
+            PartialProdutoEntity(id=3),
+        ]
+        component_product = deepcopy(produto_entity)
+        component_product.id = 2
+
+        set_product = ProdutoAggregate(product=main_product, orders=[1])
+
+        product_service.product_query.get_all_ids = MagicMock(
+            return_value=[
+                ProdutoAggregate(product=main_product),
+                ProdutoAggregate(product=component_product),
+            ]
+        )
+        product_service.product_query.get_by_purchase_id = MagicMock(
+            return_value=[ProdutoAggregate(product=main_product)]
+        )
+        product_service.product_repository.delete = MagicMock(return_value=None)
+        product_service.product_repository.set_selected_product_and_components = (
+            MagicMock(return_value=set_product)
+        )
+
+        options = [AddPurchaseOptions(product_id=1, components=[2])]
+        # act
+
+        result = product_service.add_purchase(1, options)
+
+        # assert
+        assert len(result) == 1
+        assert result[0] == set_product
+
+        product_service.product_query.get_all_ids.assert_called_once()
+        product_service.product_repository.delete.assert_called_once()
+        product_service.product_repository.set_selected_product_and_components.assert_called_once()
+
+    def test_add_purchase_success_remove_product_from_purchase(
+        self, product_service: ProductServiceCommand, produto_entity: ProdutoEntity
+    ):
+        # arrange
+        main_product = deepcopy(produto_entity)
+        main_product.allow_components = True
+        main_product.components = [
+            PartialProdutoEntity(id=2),
+            PartialProdutoEntity(id=3),
+        ]
+        secondary_product = deepcopy(produto_entity)
+        secondary_product.id = 4
+        component_product = deepcopy(produto_entity)
+        component_product.id = 2
+
+        set_product = ProdutoAggregate(product=secondary_product, orders=[1])
+
+        product_service.product_query.get_all_ids = MagicMock(
+            return_value=[
+                ProdutoAggregate(product=secondary_product),
+            ]
+        )
+        product_service.product_query.get_by_purchase_id = MagicMock(
+            return_value=[ProdutoAggregate(product=main_product)]
+        )
+        product_service.product_repository.delete = MagicMock(return_value=None)
+        product_service.product_repository.set_selected_product_and_components = (
+            MagicMock(return_value=set_product)
+        )
+
+        options = [AddPurchaseOptions(product_id=4)]
+        # act
+
+        result = product_service.add_purchase(1, options)
+
+        # assert
+        assert len(result) == 1
+        assert result[0] == set_product
+
+        product_service.product_query.get_all_ids.assert_called_once()
+        product_service.product_repository.delete.assert_called_once()
+        product_service.product_repository.set_selected_product_and_components.assert_called_once()
