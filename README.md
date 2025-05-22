@@ -156,6 +156,11 @@ Status válidos para atualizar na fila de pedidos:
 - PRONTO_PARA_ENTREGA = 7
 - ENTREGUE = 8
 - FINALIZADO = 9
+
+## Evidencias de Teste
+[SonarQube](/documentation/sonar_qube.png)
+[TestCoverage](/documentation/teste_coverage.png)
+
 ## Anexo
 
 [Documentação original da Fase 1](/documentation/Pos_tech%20-%20Fase%201%20-%20Tech%20Challenge%20Fast%20Food.pdf)
